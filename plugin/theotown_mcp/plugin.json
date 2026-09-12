@@ -1,0 +1,17 @@
+[
+  {
+    "id": "$theotown_mcp_core",
+    "type": "script",
+    "script": "core.lua",
+    "author": "TheoTown MCP Team",
+    "title": "TheoTown MCP Core Engine"
+  },
+  {
+    "id": "$theotown_mcp_inbox",
+    "type": "script",
+    "script": "inbox.lua",
+    "dev": true,
+    "author": "TheoTown MCP Team",
+    "title": "TheoTown MCP Command Mailbox (#LuaWrapper)"
+  }
+]
