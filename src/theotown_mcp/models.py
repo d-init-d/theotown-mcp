@@ -204,9 +204,20 @@ class CityTelemetry(BaseModel):
     protocol: int = 0
     session_id: str = ""
     money: int = 0
+    income: int = 0
     population: int = 0
     people: int | None = None
     happiness: float = 100.0
+    happiness_by_category: dict[str, float] = Field(default_factory=dict)
+    population_by_level: dict[str, int] = Field(default_factory=dict)
+    demand: dict[str, int] = Field(default_factory=dict)
+    taxes: dict[str, float] = Field(default_factory=dict)
+    infrastructure: dict[str, int] = Field(default_factory=dict)
+    utilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    service_coverage: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    problems: dict[str, Any] = Field(default_factory=dict)
+    diagnostics_updated_at: float = 0.0
+    diagnostics_error: str | None = None
     width: int = 128
     height: int = 128
     year: int = 2000
@@ -216,6 +227,7 @@ class CityTelemetry(BaseModel):
     connected: bool = True
     last_update: float = 0.0
     reason: str | None = None
+    disaster: str | None = None
     is_sandbox: bool = False
 
 

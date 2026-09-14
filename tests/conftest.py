@@ -39,8 +39,34 @@ def mock_telemetry_file(mock_config: TheoTownConfig) -> Path:
         "session_id": "unit-test-city",
         "name": "EmeraldCity",
         "money": 75000,
+        "income": 4200,
         "population": 1250,
         "happiness": 88.5,
+        "happiness_by_category": {"health": 62.0, "supply": 91.0},
+        "population_by_level": {"low": 800, "middle": 350, "high": 100},
+        "demand": {"residential_capacity": 1500, "commercial_jobs": 700, "industrial_jobs": 600},
+        "taxes": {"residential_low": 7.0},
+        "infrastructure": {"roads": 420, "medical_buildings": 3},
+        "utilities": {
+            "power": {
+                "estimated_production": 1000,
+                "estimated_consumption": 920,
+                "estimated_reserve": 80,
+                "utilization_percent": 92.0,
+                "adequate": True,
+            }
+        },
+        "service_coverage": {
+            "health": {
+                "average_percent": 55.0,
+                "under_threshold_percent": 28.0,
+                "samples": 100,
+                "threshold_percent": 35.0,
+                "weak_locations": [{"x": 80, "y": 12, "value_percent": 5.0}],
+            }
+        },
+        "problems": {"sampled_rci_buildings": 100, "sample_counts": {"ill": 4}},
+        "diagnostics_updated_at": time.time(),
         "width": 128,
         "height": 128,
         "year": 2026,

@@ -150,6 +150,14 @@ class TestTheoTownBridge:
         assert telem.money == 75000
         assert telem.population == 1250
         assert telem.happiness == 88.5
+        assert telem.income == 4200
+        assert telem.happiness_by_category["health"] == 62.0
+        assert telem.utilities["power"]["utilization_percent"] == 92.0
+        assert telem.service_coverage["health"]["weak_locations"][0] == {
+            "x": 80,
+            "y": 12,
+            "value_percent": 5.0,
+        }
         assert telem.speed == 1
 
     def test_read_telemetry_corrupted_file(self, mock_bridge: TheoTownBridge, mock_config: TheoTownConfig):

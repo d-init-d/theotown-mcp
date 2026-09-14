@@ -71,7 +71,7 @@ A production-grade **Model Context Protocol (MCP)** server bridging AI agents (C
 3. **Durable Enqueue**: Python appends the validated command to `requests.txt` under a cross-process lock, then commits the JSON with a same-directory atomic replace and bounded Windows retry loop.
 4. **Session Safety**: Every job is tied to the active city session. Expired, replayed, or cross-city jobs fail closed instead of executing in the wrong save.
 5. **Queue & Budgeting**: `core.lua` polls the mailbox, expands area operations into work units, and processes at most 16 units every 100 ms so large plans do not freeze the game.
-6. **Telemetry & Feedback**: TheoTown writes protocol-v2 heartbeats to `telemetry.txt` and bounded job results to `job_<job_id>.txt`; MCP clients can poll progress or cancel pending work.
+6. **Telemetry & Feedback**: TheoTown writes protocol-v2 heartbeats to `telemetry.txt` and bounded job results to `job_<job_id>.txt`; MCP clients can poll progress or cancel pending work. Every 10 seconds, the heartbeat also refreshes city diagnostics: income, population tiers, jobs, taxes, infrastructure counts, estimated power/water balance, happiness by category, sampled service coverage, and representative problem coordinates.
 
 ---
 
@@ -178,7 +178,7 @@ Then connect clients to `http://127.0.0.1:8000/mcp`.
 #### Tools (12 Tools)
 | Tool Name | Parameters | Description |
 |---|---|---|
-| `theotown_get_status` | *None* | Get current city status (money, population, happiness, dimensions, speed, date). |
+| `theotown_get_status` | *None* | Get current city status plus diagnostics for power, water, healthcare, police, fire, education, parks, waste, taxes, demand, and representative weak coordinates. |
 | `theotown_build_road` | `x0`, `y0`, `x1`, `y1`, `road_type`, `level` | Construct a horizontal or vertical road between two coordinates. |
 | `theotown_build_zone` | `x`, `y`, `width`, `height`, `zone_type` | Designate a rectangular zone (residential, commercial, industrial). |
 | `theotown_build_building` | `x`, `y`, `building_id`, `rotation` | Construct a specific building draft by ID or friendly alias. |

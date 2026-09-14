@@ -8,12 +8,19 @@ local MAX_UNITS = 10000
 local MAX_UNITS_PER_TICK = 16
 local MAX_ERROR_DETAILS = 64
 local JOB_TTL_SECONDS = 300
+local DIAGNOSTICS_INTERVAL_SECONDS = 10
+local MAX_COVERAGE_SAMPLES = 512
+local MAX_PROBLEM_LOCATIONS = 16
+local COVERAGE_THRESHOLD = 0.35
 
 local active = nil
 local finished = {}
 local loop_started = false
 local last_heartbeat = 0
+local last_diagnostics = 0
 local last_mailbox_error = nil
+local diagnostics_error = nil
+local cached_diagnostics = nil
 local session_id = (Runtime and type(Runtime.getUuid) == "function" and Runtime.getUuid())
   or (tostring(os.time()) .. "-" .. string.gsub(tostring({}), "[^%w]", ""))
 
@@ -77,12 +84,206 @@ local function cityLoaded()
   return City and type(City.getWidth) == "function" and optional(City, "getWidth", 0) > 0
 end
 
+local function invoke(owner, name, fallback, ...)
+  if owner and type(owner[name]) == "function" then
+    local ok, value = pcall(owner[name], owner, ...)
+    if ok and value ~= nil then return value end
+  end
+  return fallback
+end
+
+local function percent(value)
+  local number = tonumber(value) or 0
+  if number >= 0 and number <= 1 then return number * 100 end
+  return number
+end
+
+local function countBuildingType(name)
+  return optional(City, "countBuildingsOfType", 0, name)
+end
+
+local function buildDiagnostics(current)
+  local people = {
+    low = optional(City, "getPeople", 0, 0),
+    middle = optional(City, "getPeople", 0, 1),
+    high = optional(City, "getPeople", 0, 2)
+  }
+  local happinessTypes = {
+    health = City and City.HAPPINESS_HEALTH,
+    education = City and City.HAPPINESS_EDUCATION,
+    fire = City and City.HAPPINESS_FIREDEPARTMENT,
+    police = City and City.HAPPINESS_POLICE,
+    parks = City and City.HAPPINESS_PARK,
+    transport = City and City.HAPPINESS_TRANSPORT,
+    supply = City and City.HAPPINESS_SUPPLY,
+    taxes = City and City.HAPPINESS_TAXES,
+    environment = City and City.HAPPINESS_ENVIRONMENT,
+    waste = City and City.HAPPINESS_WASTE,
+    leisure = City and City.HAPPINESS_FREETIME
+  }
+  local happiness = {}
+  for name, kind in pairs(happinessTypes) do
+    if kind ~= nil then happiness[name] = percent(optional(City, "getHappiness", 0, kind)) end
+  end
+
+  local taxes = {}
+  local taxTypes = {
+    residential = City and City.TAX_RESIDENTIAL,
+    commercial = City and City.TAX_COMMERCIAL,
+    industrial = City and City.TAX_INDUSTRIAL
+  }
+  for name, kind in pairs(taxTypes) do
+    if kind ~= nil then
+      taxes[name .. "_low"] = optional(City, "getTax", 0, kind, 0)
+      taxes[name .. "_middle"] = optional(City, "getTax", 0, kind, 1)
+      taxes[name .. "_high"] = optional(City, "getTax", 0, kind, 2)
+    end
+  end
+
+  local infrastructure = {
+    buildings = optional(City, "countBuildings", 0),
+    roads = optional(City, "countRoads", 0),
+    zones = optional(City, "countZones", 0),
+    pipes = optional(City, "countPipes", 0),
+    wires = optional(City, "countWires", 0),
+    cars = optional(City, "countCars", 0),
+    energy_buildings = countBuildingType("energy"),
+    water_buildings = countBuildingType("water"),
+    medical_buildings = countBuildingType("medic"),
+    police_buildings = countBuildingType("police"),
+    fire_buildings = countBuildingType("fire brigade"),
+    education_buildings = countBuildingType("education"),
+    parks = countBuildingType("park"),
+    waste_buildings = countBuildingType("waste disposal")
+  }
+  local demand = {
+    residential_capacity = optional(City, "getResidentialSpace", 0),
+    commercial_jobs = optional(City, "getCommercialJobs", 0),
+    industrial_jobs = optional(City, "getIndustrialJobs", 0)
+  }
+
+  local coverageTypes = {
+    health = Tile and Tile.INFLUENCE_HEALTH,
+    police = Tile and Tile.INFLUENCE_POLICE,
+    fire = Tile and Tile.INFLUENCE_FIREDEPARTMENT,
+    education_low = Tile and Tile.INFLUENCE_EDUCATION_LOW,
+    education_high = Tile and Tile.INFLUENCE_EDUCATION_HIGH,
+    parks = Tile and Tile.INFLUENCE_PARK,
+    waste = Tile and Tile.INFLUENCE_WASTE_DISPOSAL
+  }
+  local coverage = {}
+  for name, kind in pairs(coverageTypes) do
+    if kind ~= nil then coverage[name] = { sum = 0, under = 0, samples = 0, weak_locations = {} } end
+  end
+  local problemCounts = { ill = 0, empty = 0, waste = 0, dead_bodies = 0, burning = 0, no_road = 0 }
+  local problemLocations = {}
+  local powerProduction, powerConsumption, waterProduction, waterConsumption = 0, 0, 0, 0
+  local totalBuildings = infrastructure.buildings
+  local sampled = 0
+
+  local function recordProblem(kind, x, y)
+    problemCounts[kind] = problemCounts[kind] + 1
+    if #problemLocations < MAX_PROBLEM_LOCATIONS then
+      problemLocations[#problemLocations + 1] = { type = kind, x = x, y = y }
+    end
+  end
+
+  for index = 1, totalBuildings do
+    local okPosition, x, y = pcall(City.getBuilding, index)
+    if okPosition and x ~= nil and y ~= nil then
+      local draft = optional(Tile, "getBuildingDraft", nil, x, y)
+      if draft ~= nil then
+        local performance = tonumber(optional(Tile, "getBuildingPerformance", 1, x, y)) or 1
+        local power = tonumber(invoke(draft, "getPower", 0)) or 0
+        local water = tonumber(invoke(draft, "getWater", 0)) or 0
+        if power >= 0 then powerProduction = powerProduction + power * performance
+        else powerConsumption = powerConsumption - power end
+        if water >= 0 then waterProduction = waterProduction + water * performance
+        else waterConsumption = waterConsumption - water end
+
+        local selected = totalBuildings <= MAX_COVERAGE_SAMPLES
+          or math.floor(index * MAX_COVERAGE_SAMPLES / totalBuildings)
+             > math.floor((index - 1) * MAX_COVERAGE_SAMPLES / totalBuildings)
+        if selected and invoke(draft, "isRCI", false) then
+          sampled = sampled + 1
+          for name, state in pairs(coverage) do
+            local value = tonumber(optional(Tile, "getInfluence", 0, coverageTypes[name], x, y)) or 0
+            state.sum = state.sum + value
+            state.samples = state.samples + 1
+            if value < COVERAGE_THRESHOLD then
+              state.under = state.under + 1
+              if #state.weak_locations < 8 then
+                state.weak_locations[#state.weak_locations + 1] = { x = x, y = y, value_percent = percent(value) }
+              end
+            end
+          end
+          if optional(Tile, "isBuildingIll", false, x, y) then recordProblem("ill", x, y) end
+          if optional(Tile, "isBuildingEmpty", false, x, y) then recordProblem("empty", x, y) end
+          if optional(Tile, "isBuildingFullOfWaste", false, x, y) then recordProblem("waste", x, y) end
+          if optional(Tile, "isBuildingFullOfDeadPeople", false, x, y) then recordProblem("dead_bodies", x, y) end
+          if optional(Tile, "isBuildingBurning", false, x, y) then recordProblem("burning", x, y) end
+          if not optional(Tile, "hasBuildingRoad", true, x, y) then recordProblem("no_road", x, y) end
+        end
+      end
+    end
+  end
+
+  for _, state in pairs(coverage) do
+    state.average_percent = state.samples > 0 and percent(state.sum / state.samples) or 0
+    state.under_threshold_percent = state.samples > 0 and (state.under * 100 / state.samples) or 0
+    state.threshold_percent = COVERAGE_THRESHOLD * 100
+    state.sum = nil
+    state.under = nil
+  end
+  local function utility(production, consumption)
+    return {
+      estimated_production = production,
+      estimated_consumption = consumption,
+      estimated_reserve = production - consumption,
+      utilization_percent = production > 0 and consumption * 100 / production or (consumption > 0 and 100 or 0),
+      adequate = production >= consumption
+    }
+  end
+  return {
+    updated_at = current,
+    income = optional(City, "getIncome", 0),
+    disaster = optional(City, "getDisaster", nil),
+    population_by_level = people,
+    happiness_by_category = happiness,
+    taxes = taxes,
+    demand = demand,
+    infrastructure = infrastructure,
+    utilities = {
+      power = utility(powerProduction, powerConsumption),
+      water = utility(waterProduction, waterConsumption)
+    },
+    service_coverage = coverage,
+    problems = {
+      sampled_rci_buildings = sampled,
+      sample_counts = problemCounts,
+      locations = problemLocations
+    }
+  }
+end
+
 local function emitTelemetry(reason)
   if not cityLoaded() then return end
+  local current = now()
+  if cached_diagnostics == nil or current - last_diagnostics >= DIAGNOSTICS_INTERVAL_SECONDS then
+    local ok, value = pcall(buildDiagnostics, current)
+    if ok then
+      cached_diagnostics = value
+      last_diagnostics = current
+      diagnostics_error = nil
+    else
+      diagnostics_error = tostring(value)
+    end
+  end
   local population = 0
   if City and type(City.getPeople) == "function" then
     population = optional(City, "getPeople", 0, 0) + optional(City, "getPeople", 0, 1) + optional(City, "getPeople", 0, 2)
   end
+  local details = cached_diagnostics or {}
   saveJson("telemetry.txt", {
     protocol = PROTOCOL,
     session_id = session_id,
@@ -90,7 +291,18 @@ local function emitTelemetry(reason)
     money = optional(City, "getMoney", 0),
     population = population,
     people = population,
-    happiness = optional(City, "getHappiness", 100),
+    income = details.income or optional(City, "getIncome", 0),
+    happiness = percent(optional(City, "getHappiness", 100)),
+    happiness_by_category = details.happiness_by_category or {},
+    population_by_level = details.population_by_level or {},
+    demand = details.demand or {},
+    taxes = details.taxes or {},
+    infrastructure = details.infrastructure or {},
+    utilities = details.utilities or {},
+    service_coverage = details.service_coverage or {},
+    problems = details.problems or {},
+    diagnostics_updated_at = details.updated_at or 0,
+    diagnostics_error = diagnostics_error,
     width = optional(City, "getWidth", 0),
     height = optional(City, "getHeight", 0),
     year = optional(City, "getYear", 2000),
@@ -98,8 +310,9 @@ local function emitTelemetry(reason)
     day = optional(City, "getDay", 1),
     speed = optional(City, "getSpeed", 1),
     connected = true,
-    last_updated = now(),
-    reason = reason
+    last_updated = current,
+    reason = reason,
+    disaster = details.disaster
   })
 end
 

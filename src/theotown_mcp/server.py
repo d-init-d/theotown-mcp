@@ -73,7 +73,13 @@ def create_server(
     # 12 MCP Tools
     # -------------------------------------------------------------------------
 
-    @server.tool(name="theotown_get_status", description="Retrieve active TheoTown city status, economy, population, dimensions, and simulation speed.")
+    @server.tool(
+        name="theotown_get_status",
+        description=(
+            "Read live TheoTown city telemetry, including economy, population, happiness breakdown, "
+            "infrastructure, estimated utility balance, sampled service coverage, and problem coordinates."
+        ),
+    )
     def theotown_get_status() -> CityTelemetry:
         return br.read_telemetry()
 

@@ -488,12 +488,13 @@ class TestWheelPackageBuildAndInspect:
         import zipfile
 
         # Build wheel into tmp_path
-        subprocess.run(
+        result = subprocess.run(
             [sys.executable, "-m", "hatchling", "build", "-t", "wheel", "-d", str(tmp_path)],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
+        assert result.returncode == 0, f"Wheel build failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         wheels = list(tmp_path.glob("*.whl"))
         assert len(wheels) == 1, f"Expected 1 wheel file in {tmp_path}"
 

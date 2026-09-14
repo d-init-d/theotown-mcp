@@ -7,6 +7,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
+    import tomli as tomllib
+
 
 class TestFeatureF19GitLicensing:
     def test_e2e_t1_f19_01_license_file_exists(self):
@@ -32,7 +37,6 @@ class TestFeatureF19GitLicensing:
 
     def test_e2e_t1_f19_04_license_author_metadata(self):
         """pyproject.toml matches license specification."""
-        import tomllib
         with open("pyproject.toml", "rb") as f:
             data = tomllib.load(f)
         assert data["project"]["license"]["text"] == "MIT"

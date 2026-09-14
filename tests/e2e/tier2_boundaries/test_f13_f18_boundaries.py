@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from tests.e2e.conftest import MockTheoTownEnv
@@ -189,22 +190,23 @@ class TestF13F18Boundaries:
         runner = CliRunner()
         res = runner.invoke(app, ["probe-ipc", "--help"])
         assert res.exit_code == 0
-        assert "--data-dir" in res.output
+        assert "--data-dir" in unstyle(res.output)
 
     def test_e2e_t2_f18_03_install_plugin_help(self):
         """install-plugin --help outputs options."""
         runner = CliRunner()
         res = runner.invoke(app, ["install-plugin", "--help"])
         assert res.exit_code == 0
-        assert "--force" in res.output
+        assert "--force" in unstyle(res.output)
 
     def test_e2e_t2_f18_04_run_help(self):
         """run --help outputs options."""
         runner = CliRunner()
         res = runner.invoke(app, ["run", "--help"])
         assert res.exit_code == 0
-        assert "--transport" in res.output
-        assert "--port" in res.output
+        output = unstyle(res.output)
+        assert "--transport" in output
+        assert "--port" in output
 
     def test_e2e_t2_f18_05_probe_ipc_non_existent_data_dir(self, tmp_path: Path):
         """probe-ipc against missing directory reports warning but does not crash."""

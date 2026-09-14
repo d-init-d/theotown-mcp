@@ -87,6 +87,25 @@ def test_lua_core_matches_builder_and_tile_api_signatures() -> None:
     assert "tonumber(tostring(unit.x0))" in core
 
 
+def test_lua_core_emits_city_diagnostics_from_official_read_apis() -> None:
+    root = Path(__file__).parents[1]
+    core = (root / "plugin" / "theotown_mcp" / "core.lua").read_text(encoding="utf-8")
+    packaged = (root / "src" / "theotown_mcp" / "plugin_assets" / "theotown_mcp" / "core.lua").read_text(
+        encoding="utf-8"
+    )
+    assert core == packaged
+    assert "local DIAGNOSTICS_INTERVAL_SECONDS = 10" in core
+    assert 'optional(City, "getIncome", 0)' in core
+    assert 'optional(City, "getHappiness", 0, kind)' in core
+    assert 'optional(City, "countBuildingsOfType", 0, name)' in core
+    assert 'invoke(draft, "getPower", 0)' in core
+    assert 'invoke(draft, "getWater", 0)' in core
+    assert 'optional(Tile, "getInfluence", 0, coverageTypes[name], x, y)' in core
+    assert "weak_locations" in core
+    assert "sampled_rci_buildings" in core
+    assert "happiness = percent(optional(City" in core
+
+
 def test_lua_core_bounds_repeated_errors_and_includes_failed_coordinates() -> None:
     core = (Path(__file__).parents[1] / "plugin" / "theotown_mcp" / "core.lua").read_text(encoding="utf-8")
     assert "local MAX_ERROR_DETAILS = 64" in core

@@ -314,6 +314,11 @@ class TestCityTelemetryModel:
         assert telem.money == 0
         assert telem.population == 0
         assert telem.happiness == 100.0
+        assert telem.happiness_by_category == {}
+        assert telem.infrastructure == {}
+        assert telem.utilities == {}
+        assert telem.service_coverage == {}
+        assert telem.problems == {}
         assert telem.width == 128
         assert telem.height == 128
         assert telem.speed == 1
@@ -324,6 +329,9 @@ class TestCityTelemetryModel:
             money=1000000,
             population=50000,
             happiness=95.5,
+            income=12000,
+            happiness_by_category={"health": 82.0},
+            infrastructure={"medical_buildings": 8},
             width=256,
             height=256,
             year=2030,
@@ -333,6 +341,8 @@ class TestCityTelemetryModel:
         )
         assert custom.name == "MegaCity"
         assert custom.money == 1000000
+        assert custom.income == 12000
+        assert custom.happiness_by_category["health"] == 82.0
         assert custom.speed == 3
 
     def test_city_telemetry_speed_literal_bounds(self):
