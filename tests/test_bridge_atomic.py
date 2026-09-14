@@ -6,6 +6,7 @@ Lua serialization, and job lifecycle management in theotown_mcp.bridge.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -127,14 +128,16 @@ class TestGenerateJobLua:
         lua = generate_job_lua("job_test_001", [cmd], timestamp=1700000000.0)
 
         assert "Job ID: job_test_001" in lua
-        assert "storage.theotown_mcp_pending_job" in lua
+        assert "Compatibility fixture only" in lua
+        assert "TheoTown.getStorage" not in lua
         assert 'job_id = "job_test_001"' in lua
         assert 'cmd = "build_road"' in lua
-        assert "timestamp = 1700000000" in lua
+        assert "created_at = 1700000000" in lua
 
 
 class TestTheoTownBridge:
     def test_read_telemetry_missing_file(self, mock_bridge: TheoTownBridge):
+        mock_bridge.config.telemetry_path.unlink(missing_ok=True)
         telem = mock_bridge.read_telemetry()
         assert telem.connected is False
         assert telem.width == 128
@@ -187,7 +190,8 @@ class TestTheoTownBridge:
     def test_validate_plan_treasury_warning(self, mock_bridge: TheoTownBridge, mock_config: TheoTownConfig):
         # Set city money low
         mock_config.telemetry_path.write_text(
-            json.dumps({"name": "PoorTown", "money": 100, "width": 128, "height": 128, "connected": True}),
+            json.dumps({"protocol": 2, "session_id": "test-session", "name": "PoorTown", "money": 100,
+                        "width": 128, "height": 128, "connected": True, "last_updated": time.time()}),
             encoding="utf-8",
         )
         cmds = [{"cmd": "build_building", "x": 10, "y": 10, "building_id": "$solarplant00"}]
@@ -208,12 +212,12 @@ class TestTheoTownBridge:
         assert job.job_id.startswith("job_")
         assert job.job_id in mock_bridge.jobs
 
-        # Verify inbox.lua on disk
-        inbox_file = mock_bridge.config.inbox_path
+        # Verify the data mailbox on disk
+        inbox_file = mock_bridge.config.requests_path
         assert inbox_file.exists()
         content = inbox_file.read_text(encoding="utf-8")
         assert job.job_id in content
-        assert "storage.theotown_mcp_pending_job" in content
+        assert '"protocol":2' in content
 
     def test_get_job_status_in_memory_and_disk(self, mock_bridge: TheoTownBridge):
         # 1. In memory
@@ -249,19 +253,19 @@ class TestTheoTownBridge:
     def test_cancel_job(self, mock_bridge: TheoTownBridge):
         job = mock_bridge.execute_plan([BuildRoadCmd(x0=0, y0=0, x1=5, y1=0)])
         res = mock_bridge.cancel_job(job.job_id)
-        assert res["status"] == "cancelled"
-        assert mock_bridge.jobs[job.job_id].status == "cancelled"
+        assert res["status"] == "cancel_requested"
+        assert mock_bridge.jobs[job.job_id].status == "cancel_requested"
 
-        inbox_content = mock_bridge.config.inbox_path.read_text(encoding="utf-8")
-        assert f"Cancel Job {job.job_id}" in inbox_content
+        inbox = json.loads(mock_bridge.config.requests_path.read_text(encoding="utf-8"))
+        assert inbox["jobs"][job.job_id]["cancel_requested"] is True
 
     def test_set_speed(self, mock_bridge: TheoTownBridge):
         res = mock_bridge.set_speed(2)
-        assert res["status"] == "success"
+        assert res["status"] == "pending"
         assert res["speed"] == 2
 
-        inbox_content = mock_bridge.config.inbox_path.read_text(encoding="utf-8")
-        assert "City.setSpeed(2)" in inbox_content
+        inbox = json.loads(mock_bridge.config.requests_path.read_text(encoding="utf-8"))
+        assert inbox["jobs"][res["job_id"]]["commands"]["1"]["speed"] == 2
 
         with pytest.raises(ValueError, match="between 0 and 4"):
             mock_bridge.set_speed(5)

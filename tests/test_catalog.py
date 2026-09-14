@@ -27,14 +27,14 @@ class TestDraftCatalogAliases:
         assert "park" in mock_catalog.aliases
 
     def test_resolve_draft_id_exact(self, mock_catalog: DraftCatalog):
-        assert mock_catalog.resolve_draft_id("two_lane_road") == "$road03"
-        assert mock_catalog.resolve_draft_id("residential_low") == "$zone_residential_0"
+        assert mock_catalog.resolve_draft_id("two_lane_road") == "$road00"
+        assert mock_catalog.resolve_draft_id("residential_low") == "$zoneresidential"
         assert mock_catalog.resolve_draft_id("solar") == "$solarplant00"
         assert mock_catalog.resolve_draft_id("pipe") == "$pipe00"
 
     def test_resolve_draft_id_case_insensitive_and_whitespace(self, mock_catalog: DraftCatalog):
-        assert mock_catalog.resolve_draft_id("  TWO_LANE_ROAD  ") == "$road03"
-        assert mock_catalog.resolve_draft_id("Residential_Low") == "$zone_residential_0"
+        assert mock_catalog.resolve_draft_id("  TWO_LANE_ROAD  ") == "$road00"
+        assert mock_catalog.resolve_draft_id("Residential_Low") == "$zoneresidential"
         assert mock_catalog.resolve_draft_id("SOLAR") == "$solarplant00"
 
     def test_resolve_draft_id_passthrough_native_or_unknown(self, mock_catalog: DraftCatalog):
@@ -54,7 +54,7 @@ class TestDraftCatalogLookupAndSearch:
         # By Alias
         draft_alias = mock_catalog.get_draft("two_lane_road")
         assert draft_alias is not None
-        assert draft_alias["id"] == "$road03"
+        assert draft_alias["id"] == "$road00"
 
         # Non-existent
         assert mock_catalog.get_draft("$non_existent_id") is None
@@ -116,7 +116,7 @@ class TestPriceEstimation:
     def test_estimate_unit_price(self, mock_catalog: DraftCatalog):
         assert mock_catalog.estimate_unit_price("$road03") == 50
         assert mock_catalog.estimate_unit_price("two_lane_road") == 50
-        assert mock_catalog.estimate_unit_price("$zone_residential_0") == 10
+        assert mock_catalog.estimate_unit_price("$zoneresidential") == 10
         assert mock_catalog.estimate_unit_price("solar") == 8000
         # Unknown falls back to default_price
         assert mock_catalog.estimate_unit_price("mystery_item", default_price=999) == 999

@@ -14,9 +14,6 @@ from theotown_mcp.catalog import (
     DraftCatalog,
     get_catalog,
 )
-from theotown_mcp.cli import (
-    app,
-)
 from theotown_mcp.config import (
     TheoTownConfig,
     get_config,
@@ -40,7 +37,16 @@ from theotown_mcp.server import (
     server,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
+
+
+def __getattr__(name: str):
+    """Load the CLI lazily so ``python -m theotown_mcp.cli`` runs only once."""
+    if name == "app":
+        from theotown_mcp.cli import app
+
+        return app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "BuildBuildingCmd",

@@ -21,8 +21,8 @@ from theotown_mcp.models import (
 # Canonical alias mapping: friendly names to TheoTown draft IDs
 DEFAULT_ALIASES: dict[str, str] = {
     # Roads
-    "two_lane_road": "$road03",
-    "road": "$road03",
+    "two_lane_road": "$road00",
+    "road": "$road00",
     "dirt_road": "$road01",
     "country_road": "$road02",
     "avenue": "$road04",
@@ -31,24 +31,25 @@ DEFAULT_ALIASES: dict[str, str] = {
     "one_way_road": "$road_oneway00",
     "bridge": "$bridge00",
     # Zones
-    "residential_low": "$zone_residential_0",
-    "residential_low_alt": "$zone_residential_low00",
-    "residential_medium": "$zone_residential_1",
-    "residential_high": "$zone_residential_2",
-    "commercial_low": "$zone_commercial_0",
-    "commercial_medium": "$zone_commercial_1",
-    "commercial_high": "$zone_commercial_2",
-    "industrial_low": "$zone_industrial_0",
-    "industrial_medium": "$zone_industrial_1",
-    "industrial_high": "$zone_industrial_2",
-    "residential": "$zone_residential_0",
-    "commercial": "$zone_commercial_0",
-    "industrial": "$zone_industrial_0",
+    "residential_low": "$zoneresidential",
+    "residential_low_alt": "$zoneresidential",
+    "residential_medium": "$zoneresidential",
+    "residential_high": "$zoneresidential_lvl2",
+    "commercial_low": "$zonecommercial",
+    "commercial_medium": "$zonecommercial",
+    "commercial_high": "$zonecommercial_lvl2",
+    "industrial_low": "$zoneindustrial",
+    "industrial_medium": "$zoneindustrial",
+    "industrial_high": "$zoneindustrial_lvl2",
+    "residential": "$zoneresidential",
+    "commercial": "$zonecommercial",
+    "industrial": "$zoneindustrial",
     # Utilities
     "water_tower": "$watertower00",
     "wind_turbine": "$windturbine00",
     "solar_plant": "$solarplant00",
     "solar": "$solarplant00",
+    "solar_panels": "$solarpanels00",
     "coal_power": "$coalpower00",
     "pipe": "$pipe00",
     "wire": "$wire00",
@@ -63,6 +64,7 @@ DEFAULT_ALIASES: dict[str, str] = {
 
 # Offline default price catalog (in TheoTown credits/Theons)
 DEFAULT_PRICING: dict[str, int] = {
+    "$road00": 50,
     "$road01": 20,
     "$road02": 35,
     "$road03": 50,
@@ -70,21 +72,18 @@ DEFAULT_PRICING: dict[str, int] = {
     "$road_highway00": 200,
     "$road_highway01": 250,
     "$road_oneway00": 40,
-    "$zone_residential_0": 10,
-    "$zone_residential_low00": 10,
-    "$zone_residential_1": 25,
-    "$zone_residential_2": 50,
-    "$zone_commercial_0": 15,
-    "$zone_commercial_1": 35,
-    "$zone_commercial_2": 70,
-    "$zone_industrial_0": 12,
-    "$zone_industrial_1": 30,
-    "$zone_industrial_2": 60,
+    "$zoneresidential": 10,
+    "$zoneresidential_lvl2": 50,
+    "$zonecommercial": 15,
+    "$zonecommercial_lvl2": 70,
+    "$zoneindustrial": 12,
+    "$zoneindustrial_lvl2": 60,
     "$pipe00": 20,
     "$wire00": 15,
     "$watertower00": 2500,
     "$windturbine00": 4000,
     "$solarplant00": 8000,
+    "$solarpanels00": 8000,
     "$coalpower00": 15000,
     "$park00": 500,
     "$firestation00": 3000,
@@ -95,19 +94,17 @@ DEFAULT_PRICING: dict[str, int] = {
 
 # Baseline default catalog entries for vanilla game drafts
 DEFAULT_DRAFTS: list[dict[str, Any]] = [
+    {"id": "$road00", "title": "Two-Lane Road", "category": "road", "type": "road", "price": 50, "description": "Standard paved two-lane city street"},
     {"id": "$road01", "title": "Dirt Road", "category": "road", "type": "road", "price": 20, "description": "Unpaved dirt track"},
     {"id": "$road02", "title": "Country Road", "category": "road", "type": "road", "price": 35, "description": "Basic country road"},
     {"id": "$road03", "title": "Two-Lane Road", "category": "road", "type": "road", "price": 50, "description": "Standard paved two-lane city street"},
     {"id": "$road04", "title": "Four-Lane Avenue", "category": "road", "type": "road", "price": 120, "description": "High-capacity four-lane avenue"},
-    {"id": "$zone_residential_0", "title": "Low Density Residential", "category": "zone", "type": "zone", "price": 10, "description": "Single-family suburban housing"},
-    {"id": "$zone_residential_1", "title": "Medium Density Residential", "category": "zone", "type": "zone", "price": 25, "description": "Townhouses and apartments"},
-    {"id": "$zone_residential_2", "title": "High Density Residential", "category": "zone", "type": "zone", "price": 50, "description": "High-rise condominiums"},
-    {"id": "$zone_commercial_0", "title": "Low Density Commercial", "category": "zone", "type": "zone", "price": 15, "description": "Local corner stores"},
-    {"id": "$zone_commercial_1", "title": "Medium Density Commercial", "category": "zone", "type": "zone", "price": 35, "description": "Shopping centers and offices"},
-    {"id": "$zone_commercial_2", "title": "High Density Commercial", "category": "zone", "type": "zone", "price": 70, "description": "Corporate towers and skyscrapers"},
-    {"id": "$zone_industrial_0", "title": "Light Industrial", "category": "zone", "type": "zone", "price": 12, "description": "Workshops and warehouses"},
-    {"id": "$zone_industrial_1", "title": "Medium Industrial", "category": "zone", "type": "zone", "price": 30, "description": "Manufacturing facilities"},
-    {"id": "$zone_industrial_2", "title": "Heavy Industrial", "category": "zone", "type": "zone", "price": 60, "description": "Heavy industrial plants"},
+    {"id": "$zoneresidential", "title": "Residential Zone", "category": "zone", "type": "zone", "price": 10, "description": "Residential development zone"},
+    {"id": "$zoneresidential_lvl2", "title": "Dense Residential Zone", "category": "zone", "type": "zone", "price": 50, "description": "Dense residential development zone"},
+    {"id": "$zonecommercial", "title": "Commercial Zone", "category": "zone", "type": "zone", "price": 15, "description": "Commercial development zone"},
+    {"id": "$zonecommercial_lvl2", "title": "Dense Commercial Zone", "category": "zone", "type": "zone", "price": 70, "description": "Dense commercial development zone"},
+    {"id": "$zoneindustrial", "title": "Industrial Zone", "category": "zone", "type": "zone", "price": 12, "description": "Industrial development zone"},
+    {"id": "$zoneindustrial_lvl2", "title": "Dense Industrial Zone", "category": "zone", "type": "zone", "price": 60, "description": "Dense industrial development zone"},
     {"id": "$watertower00", "title": "Water Tower", "category": "water", "type": "building", "price": 2500, "description": "Stores and distributes clean water"},
     {"id": "$windturbine00", "title": "Wind Turbine", "category": "energy", "type": "building", "price": 4000, "description": "Eco-friendly wind power generator"},
     {"id": "$solarplant00", "title": "Solar Power Plant", "category": "energy", "type": "building", "price": 8000, "description": "Clean solar energy array"},
@@ -150,7 +147,7 @@ class DraftCatalog:
     def resolve_draft_id(self, alias_or_id: str) -> str:
         """
         Resolves an alias or native draft ID.
-        Returns native draft ID (e.g. 'two_lane_road' -> '$road03').
+        Returns native draft ID (e.g. 'two_lane_road' -> '$road00').
         """
         clean_key = alias_or_id.strip()
         if clean_key in self.aliases:
@@ -242,6 +239,14 @@ _global_catalog: DraftCatalog | None = None
 def get_catalog(config: TheoTownConfig | None = None, refresh: bool = False) -> DraftCatalog:
     """Retrieves or initializes the global DraftCatalog singleton."""
     global _global_catalog
+    if config is not None:
+        return DraftCatalog(config=config)
     if _global_catalog is None or refresh:
-        _global_catalog = DraftCatalog(config=config)
+        _global_catalog = DraftCatalog()
     return _global_catalog
+
+
+def reset_catalog() -> None:
+    """Resets the global catalog singleton for clean test isolation."""
+    global _global_catalog
+    _global_catalog = None

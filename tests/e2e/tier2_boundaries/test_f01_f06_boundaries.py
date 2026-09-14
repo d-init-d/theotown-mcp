@@ -139,7 +139,8 @@ class TestF01F06Boundaries:
         """Job status transitions to cancelled."""
         job = mock_env.bridge.execute_plan([BuildRoadCmd(x0=0, y0=0, x1=10, y1=0)])
         c_res = mock_env.bridge.cancel_job(job.job_id)
-        assert c_res["status"] == "cancelled"
+        assert c_res["status"] == "cancel_requested"
+        assert mock_env.simulator.process_inbox().status == "cancelled"
 
     def test_e2e_t2_f04_04_non_existent_job_query(self, mock_env: MockTheoTownEnv):
         """Querying unknown job returns failed with error message."""

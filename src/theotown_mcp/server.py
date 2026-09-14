@@ -64,7 +64,7 @@ def create_server(
 
     server = MCPServer(
         name="theotown-mcp",
-        version="0.1.0",
+        version="0.2.0",
         description="TheoTown MCP Server: AI Autonomous Urban Planning and Construction Engine",
         instructions=SERVER_INSTRUCTIONS,
     )
@@ -83,7 +83,7 @@ def create_server(
         y0: int,
         x1: int,
         y1: int,
-        road_type: str = "$road03",
+        road_type: str = "$road00",
         level: int = 0,
     ) -> dict[str, Any]:
         resolved_type = cat.resolve_draft_id(road_type)
@@ -94,6 +94,7 @@ def create_server(
             "status": "enqueued",
             "job_id": job.job_id,
             "cmd": "build_road",
+            "road_type": resolved_type,
             "tile_length": cmd.tile_length,
             "estimated_cost": cost,
         }
@@ -240,5 +241,24 @@ def create_server(
     return server
 
 
-# Global default server instance
-server: MCPServer = create_server()
+_default_server: MCPServer | None = None
+
+
+def get_default_server() -> MCPServer:
+    """Returns or initializes the default MCPServer instance."""
+    global _default_server
+    if _default_server is None:
+        _default_server = create_server()
+    return _default_server
+
+
+def reset_server() -> None:
+    """Resets the default MCPServer instance for clean test isolation."""
+    global _default_server
+    _default_server = None
+
+
+def __getattr__(name: str) -> Any:
+    if name == "server":
+        return get_default_server()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

@@ -5,6 +5,8 @@ Tier 2: Boundary & Corner Cases (Features F07 to F12)
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -113,13 +115,14 @@ class TestF07F12Boundaries:
         """Large inbox file (~50KB) executes without parsing error."""
         cmds = [BuildRoadCmd(x0=i % 100, y0=0, x1=i % 100, y1=5) for i in range(100)]
         mock_env.bridge.execute_plan(cmds)
-        assert mock_env.config.inbox_path.stat().st_size > 1000
+        assert mock_env.config.requests_path.stat().st_size > 1000
 
     def test_e2e_t2_f10_03_multiple_replaces_same_session(self, mock_env: MockTheoTownEnv):
         """Multiple sequential inbox overwrites maintain integrity."""
         for i in range(5):
             mock_env.bridge.set_speed(i % 5)
-            assert f"City.setSpeed({i % 5})" in mock_env.config.inbox_path.read_text(encoding="utf-8")
+        mailbox = json.loads(mock_env.config.requests_path.read_text(encoding="utf-8"))
+        assert [job["commands"]["1"]["speed"] for job in mailbox["jobs"].values()] == list(range(5))
 
     def test_e2e_t2_f10_04_int_coordinates_clamped(self):
         """Coordinates must be integer values."""

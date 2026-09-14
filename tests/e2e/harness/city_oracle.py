@@ -7,6 +7,7 @@ and executes operations according to official TheoTown Lua semantics.
 from __future__ import annotations
 
 import math
+import time
 from typing import Any, Literal
 
 from theotown_mcp.catalog import DraftCatalog
@@ -77,6 +78,8 @@ class CityOracle:
     def get_telemetry_dict(self) -> dict[str, Any]:
         """Returns telemetry representation matching telemetry.json schema."""
         return {
+            "protocol": 2,
+            "session_id": "simulated-city-session",
             "name": self.name,
             "money": self.money,
             "population": self.population,
@@ -89,7 +92,7 @@ class CityOracle:
             "day": self.day,
             "speed": self.speed,
             "connected": True,
-            "last_updated": 1746214197.0,
+            "last_updated": time.time(),
         }
 
     def is_in_bounds(self, x: int, y: int) -> bool:

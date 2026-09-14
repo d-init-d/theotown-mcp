@@ -1,59 +1,15 @@
-"""
-In-Game Engine & Bridge Simulator for E2E tests.
-Simulates #LuaWrapper hot-reload watcher and core.lua FIFO queue processing
-with strict workload budgeting (max 64 tiles per frame tick).
-"""
+"""In-game protocol-v2 bridge simulator for end-to-end tests."""
 
 from __future__ import annotations
 
 import json
-import re
 import time
 from typing import Any
 
 from tests.e2e.harness.city_oracle import CityOracle
 from theotown_mcp.config import TheoTownConfig
 from theotown_mcp.models import JobStatus, parse_command
-
-
-def parse_lua_job_payload(lua_code: str) -> dict[str, Any] | None:
-    """Extracts job dictionary from generated inbox.lua content."""
-    # Look for storage.theotown_mcp_pending_job = { ... }
-    match = re.search(r"storage\.theotown_mcp_pending_job\s*=\s*(\{.*?\})\s*(?:end|\Z)", lua_code, re.DOTALL)
-    if not match:
-        return None
-
-    raw_table = match.group(1)
-
-    # Extract job_id
-    id_match = re.search(r'job_id\s*=\s*"([^"]+)"', raw_table)
-    job_id = id_match.group(1) if id_match else "unknown_job"
-
-    # Extract commands array
-    cmds: list[dict[str, Any]] = []
-    # Match command entries: { cmd = "...", ... }
-    cmd_blocks = re.findall(r"\{\s*cmd\s*=\s*\"([^\"]+)\"(.*?)\}", raw_table)
-    for cmd_name, body in cmd_blocks:
-        entry: dict[str, Any] = {"cmd": cmd_name}
-        for k, v in re.findall(r'(\w+)\s*=\s*("(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?|true|false)', body):
-            val: Any
-            if v == "true":
-                val = True
-            elif v == "false":
-                val = False
-            elif v.startswith('"') and v.endswith('"'):
-                val = v[1:-1].replace('\\"', '"').replace("\\n", "\n")
-            elif "." in v:
-                val = float(v)
-            else:
-                val = int(v)
-            entry[k] = val
-        cmds.append(entry)
-
-    return {
-        "job_id": job_id,
-        "commands": cmds,
-    }
+from theotown_mcp.queue import read_mailbox
 
 
 class BridgeSimulator:
@@ -64,6 +20,7 @@ class BridgeSimulator:
         self.oracle = oracle
         self.processed_job_ids: set[str] = set()
         self.last_inbox_mtime: float = 0.0
+        self.last_result: JobStatus | None = None
 
     def sync_telemetry_to_disk(self) -> None:
         """Writes current oracle state to telemetry.json."""
@@ -73,47 +30,43 @@ class BridgeSimulator:
 
     def process_inbox(self, max_units_per_tick: int = 64) -> JobStatus | None:
         """
-        Polls inbox.lua, detects modifications, parses payload,
+        Polls requests.txt, selects the first unprocessed job,
         and simulates tick budgeting and command execution.
         """
-        inbox_file = self.config.inbox_path
-        if not inbox_file.exists():
+        if not self.config.requests_path.exists():
             return None
-
-        content = inbox_file.read_text(encoding="utf-8")
-
-        # Check for cancel command
-        cancel_match = re.search(r"Cancel Job (job_\w+)", content)
-        if cancel_match:
-            c_job_id = cancel_match.group(1)
-            status_file = self.config.plugin_dir / f"job_{c_job_id}.json"
-            now = time.time()
-            cancelled_status = JobStatus(
-                job_id=c_job_id,
-                status="cancelled",
-                progress=0.5,
-                total_steps=1,
-                completed_steps=0,
-                created_at=now,
-                updated_at=now,
-            )
-            status_file.write_text(cancelled_status.model_dump_json(indent=2), encoding="utf-8")
-            return cancelled_status
-
-        payload = parse_lua_job_payload(content)
-        if not payload:
-            return None
+        mailbox = read_mailbox(self.config.requests_path)
+        payload = next((item for item in mailbox["jobs"].values()
+                        if item.get("job_id") not in self.processed_job_ids), None)
+        if payload is None:
+            return self.last_result
 
         job_id = payload["job_id"]
+        if payload.get("cancel_requested") is True:
+            self.processed_job_ids.add(job_id)
+            now = time.time()
+            cancelled_status = JobStatus(
+                job_id=job_id,
+                session_id=str(payload.get("session_id", "")),
+                status="cancelled",
+                progress=0.0,
+                total_steps=len(payload.get("commands", [])),
+                created_at=float(payload.get("created_at", now)),
+                updated_at=now,
+            )
+            status_file = self.config.plugin_dir / f"job_{job_id}.txt"
+            status_file.write_text(cancelled_status.model_dump_json(indent=2), encoding="utf-8")
+            self.last_result = cancelled_status
+            return cancelled_status
         if job_id in self.processed_job_ids:
             # Already processed
-            status_file = self.config.plugin_dir / f"job_{job_id}.json"
+            status_file = self.config.plugin_dir / f"job_{job_id}.txt"
             if status_file.exists():
                 return JobStatus.model_validate_json(status_file.read_text(encoding="utf-8"))
             return None
 
         self.processed_job_ids.add(job_id)
-        raw_cmds = payload["commands"]
+        raw_cmds = [payload["commands"][key] for key in sorted(payload["commands"], key=int)]
         total_steps = len(raw_cmds)
         now = time.time()
 
@@ -139,17 +92,18 @@ class BridgeSimulator:
         final_status: Any = "completed" if len(errors) == 0 else "failed"
         job_status = JobStatus(
             job_id=job_id,
+            session_id=str(payload.get("session_id", "")),
             status=final_status,
             progress=1.0 if total_steps == 0 else completed_steps / total_steps,
             total_steps=total_steps,
             completed_steps=completed_steps,
-            created_at=now,
+            created_at=float(payload.get("created_at", now)),
             updated_at=time.time(),
             error="; ".join(errors) if errors else None,
         )
 
         # Write status to disk
-        status_file = self.config.plugin_dir / f"job_{job_id}.json"
+        status_file = self.config.plugin_dir / f"job_{job_id}.txt"
         status_file.write_text(job_status.model_dump_json(indent=2), encoding="utf-8")
-
+        self.last_result = job_status
         return job_status

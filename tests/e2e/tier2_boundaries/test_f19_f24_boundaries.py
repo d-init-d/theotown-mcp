@@ -162,7 +162,7 @@ class TestF19F24Boundaries:
         """Status file for job is created and queryable."""
         job = mock_env.bridge.execute_plan([BuildRoadCmd(x0=0, y0=0, x1=5, y1=0)])
         mock_env.simulator.process_inbox()
-        assert (mock_env.config.plugin_dir / f"job_{job.job_id}.json").exists()
+        assert (mock_env.config.plugin_dir / f"job_{job.job_id}.txt").exists()
 
     def test_e2e_t2_f23_05_telemetry_timestamp_freshness(self, mock_env: MockTheoTownEnv):
         """Telemetry includes last_updated timestamp."""

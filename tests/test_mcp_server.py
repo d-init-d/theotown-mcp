@@ -16,7 +16,7 @@ from theotown_mcp.server import MCPServer
 class TestMCPServerRegistration:
     def test_server_metadata(self, mock_server: MCPServer):
         assert mock_server.name == "theotown-mcp"
-        assert mock_server.version == "0.1.0"
+        assert mock_server.version == "0.2.0"
         assert "TheoTown" in mock_server.instructions
 
     def test_all_12_tools_registered(self, mock_server: MCPServer):
@@ -69,6 +69,15 @@ class TestMCPServerToolCalls:
         assert data["cmd"] == "build_road"
         assert data["tile_length"] == 11
         assert data["estimated_cost"] == 11 * 50
+
+    async def test_call_theotown_build_road_uses_live_default_draft(self, mock_server: MCPServer):
+        result = await mock_server.call_tool(
+            "theotown_build_road",
+            {"x0": 10, "y0": 10, "x1": 11, "y1": 10},
+        )
+        assert result.is_error is False
+        assert result.structured_content["road_type"] == "$road00"
+        assert result.structured_content["estimated_cost"] == 2 * 50
 
     async def test_call_theotown_build_zone(self, mock_server: MCPServer):
         args = {"x": 5, "y": 5, "width": 4, "height": 4, "zone_type": "residential_low"}
@@ -143,7 +152,7 @@ class TestMCPServerToolCalls:
         # Cancel job
         cancel_res = await mock_server.call_tool("theotown_cancel_job", {"job_id": job_id})
         assert cancel_res.is_error is False
-        assert cancel_res.structured_content["status"] == "cancelled"
+        assert cancel_res.structured_content["status"] == "cancel_requested"
 
     async def test_call_theotown_set_speed(self, mock_server: MCPServer):
         result = await mock_server.call_tool("theotown_set_speed", {"speed": 3})

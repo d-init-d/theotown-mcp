@@ -18,7 +18,7 @@ class TestFeatureF09DraftDiscovery:
         ids = [d["id"] for d in drafts]
         assert "$road01" in ids
         assert "$road03" in ids
-        assert "$zone_residential_0" in ids
+        assert "$zoneresidential" in ids
 
     def test_e2e_t1_f09_02_extract_metadata(self, mock_env: MockTheoTownEnv):
         """Draft metadata attributes (id, type, price) present."""

@@ -6,6 +6,7 @@ and two-layer validation (schema-level constraints + city bounds runtime checks)
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
@@ -22,7 +23,7 @@ class BuildRoadCmd(BaseModel):
     y0: int = Field(..., ge=0, description="Starting grid Y coordinate")
     x1: int = Field(..., ge=0, description="Ending grid X coordinate")
     y1: int = Field(..., ge=0, description="Ending grid Y coordinate")
-    road_type: str = Field(default="$road03", min_length=1, description="Road draft ID or friendly alias")
+    road_type: str = Field(default="$road00", min_length=1, description="Road draft ID or friendly alias")
     level: int = Field(default=0, ge=-2, le=2, description="Elevation level: -2 (tunnel) to 2 (elevated bridge)")
 
     @property
@@ -155,6 +156,19 @@ plan_command_adapter: TypeAdapter[PlanCommand] = TypeAdapter(PlanCommand)
 plan_command_list_adapter: TypeAdapter[list[PlanCommand]] = TypeAdapter(list[PlanCommand])
 
 
+MAX_COMMANDS_PER_PLAN: int = 250
+MAX_AFFECTED_TILES: int = 10000
+
+JOB_ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def validate_job_id(job_id: str) -> str:
+    """Validates job ID format preventing injection and invalid characters."""
+    if not isinstance(job_id, str) or not JOB_ID_REGEX.fullmatch(job_id):
+        raise ValueError(f"Invalid job_id '{job_id}'. Must match pattern ^[a-zA-Z0-9_-]{{1,64}}$")
+    return job_id
+
+
 class PlanValidationResult(BaseModel):
     """Result of a dry-run plan validation check."""
 
@@ -170,10 +184,13 @@ class JobStatus(BaseModel):
     """Status and progress tracking for an asynchronous construction job."""
 
     job_id: str
-    status: Literal["pending", "running", "completed", "failed", "cancelled"]
+    status: Literal["pending", "running", "cancel_requested", "completed", "failed", "cancelled"]
+    session_id: str = ""
     progress: float = 0.0
     total_steps: int = 0
     completed_steps: int = 0
+    attempted_steps: int = 0
+    failed_steps: int = 0
     created_at: float
     updated_at: float
     error: str | None = None
@@ -184,8 +201,11 @@ class CityTelemetry(BaseModel):
     """Telemetry data representing the active city simulation state."""
 
     name: str = "Unknown"
+    protocol: int = 0
+    session_id: str = ""
     money: int = 0
     population: int = 0
+    people: int | None = None
     happiness: float = 100.0
     width: int = 128
     height: int = 128
@@ -195,6 +215,8 @@ class CityTelemetry(BaseModel):
     speed: Literal[0, 1, 2, 3, 4] = 1
     connected: bool = True
     last_update: float = 0.0
+    reason: str | None = None
+    is_sandbox: bool = False
 
 
 def parse_command(data: Any) -> PlanCommand:

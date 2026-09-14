@@ -5,6 +5,7 @@ Pytest configuration and shared fixtures for TheoTown MCP Server tests.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,8 @@ def mock_config(mock_theotown_dir: Path) -> TheoTownConfig:
 def mock_telemetry_file(mock_config: TheoTownConfig) -> Path:
     """Creates a mock telemetry.json file with realistic city simulation metrics."""
     telemetry_data = {
+        "protocol": 2,
+        "session_id": "unit-test-city",
         "name": "EmeraldCity",
         "money": 75000,
         "population": 1250,
@@ -45,7 +48,7 @@ def mock_telemetry_file(mock_config: TheoTownConfig) -> Path:
         "day": 12,
         "speed": 1,
         "connected": True,
-        "last_updated": 1746214197.0,
+        "last_updated": time.time(),
     }
     path = mock_config.telemetry_path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +63,7 @@ def mock_catalog(mock_config: TheoTownConfig) -> DraftCatalog:
 
 
 @pytest.fixture
-def mock_bridge(mock_config: TheoTownConfig, mock_catalog: DraftCatalog) -> TheoTownBridge:
+def mock_bridge(mock_config: TheoTownConfig, mock_catalog: DraftCatalog, mock_telemetry_file: Path) -> TheoTownBridge:
     """Provides a TheoTownBridge connected to mock configuration and catalog."""
     return TheoTownBridge(config=mock_config, catalog=mock_catalog)
 

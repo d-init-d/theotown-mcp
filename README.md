@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP SDK v2](https://img.shields.io/badge/MCP%20SDK-v2.2.0-green.svg)](https://modelcontextprotocol.io/)
 
-A production-grade **Model Context Protocol (MCP)** server bridging AI agents (Claude Desktop, Cursor IDE, Hermes Agent, Antigravity) to the **TheoTown** city simulation game. It empowers AI models to inspect city states, design urban layouts, and construct road networks, buildings, zones, and utilities via the official TheoTown Lua API and `#LuaWrapper` hot-reload IPC.
+A production-grade **Model Context Protocol (MCP)** server bridging AI agents (Claude Desktop, Cursor IDE, Hermes Agent, Antigravity) to the **TheoTown** city simulation game. It empowers AI models to inspect city states, design urban layouts, and construct road networks, buildings, zones, and utilities through the official TheoTown Lua API and a durable JSON mailbox.
 
 ---
 
@@ -35,25 +35,24 @@ A production-grade **Model Context Protocol (MCP)** server bridging AI agents (C
 |  - Hardened Windows Atomic Bridge (same-dir temp file + fsync + os.replace)   |
 +--------------------------------------------------------------------------------+
                                        |
-                   Atomic File Write (%USERPROFILE%\TheoTown\plugins\)
+                  Atomic JSON Write (%USERPROFILE%\TheoTown\plugins\)
                                        v
 +--------------------------------------------------------------------------------+
-|                     INBOX MAILBOX (plugin/theotown_mcp/inbox.lua)              |
-|  - Watched by TheoTown's #LuaWrapper with "dev": true                          |
-|  - Instantly hot-reloads on file timestamp change                              |
-|  - Stores payload into TheoTown.getStorage().theotown_mcp_pending_job          |
+|                    DATA MAILBOX (requests.txt, protocol v2)                    |
+|  - Cross-process lock plus atomic read-modify-write updates                    |
+|  - Up to 64 concurrent queued jobs without command loss                       |
+|  - Session binding, cancellation flags, TTL, and replay protection            |
 +--------------------------------------------------------------------------------+
                                        |
-                      In-Memory Lua State Bus (TheoTown.getStorage())
+                         Periodic mailbox polling
                                        v
 +--------------------------------------------------------------------------------+
 |                       CORE ENGINE (plugin/theotown_mcp/core.lua)               |
-|  - Persistent startup script (does not reload, maintains state)                |
-|  - FIFO Queue Manager & Job Lifecycle State Machine                            |
-|  - Workload Budgeting & Throttling (max 64 tiles / 3ms per frame tick)         |
-|  - Road Segmenting (slices paths > 32 tiles with shared boundary joints)       |
-|  - Preflight validation (Builder.is*Buildable) & Cost checks (get*Price)       |
-|  - Telemetry generation & Dynamic Draft Catalog Discovery                      |
+|  - Static startup script with a protocol-v2 execution engine                  |
+|  - Durable job lifecycle with per-session anti-replay safeguards              |
+|  - Workload throttling (max 16 work units per 100 ms tick)                    |
+|  - Official Builder preflight checks plus post-build Tile verification        |
+|  - Bounded, coordinate-aware failure details and live telemetry               |
 +--------------------------------------------------------------------------------+
                                        |
                       Official TheoTown Lua Engine APIs
@@ -69,10 +68,10 @@ A production-grade **Model Context Protocol (MCP)** server bridging AI agents (C
 2. **Two-Layer Validation**:
    - **Schema Layer**: Pydantic v2 ensures non-negative coordinates, positive dimensions, and valid elevation.
    - **Runtime Layer**: Python checks current city bounds (`City.getWidth()`, `City.getHeight()`).
-3. **Atomic Lua Serialization**: Payload is serialized to Lua table format with string escaping (`serialize_to_lua()`). Written to a co-located temporary file, flushed, fsynced, closed, and atomically replaced (`os.replace`) with an exponential backoff retry loop absorbing transient Windows file locks (`[WinError 32]`).
-4. **Hot-Reload Trigger**: `#LuaWrapper` with `"dev": true` detects `inbox.lua` update and evaluates it within ~16ms without game restart.
-5. **Queue & Budgeting**: `core.lua` picks up pending jobs from `TheoTown.getStorage()`, decomposes operations into atomic work units, and processes them within the budget (max 64 tiles / 3ms per tick) inside `script:update()`, guaranteeing smooth frame rates without engine watchdog stutters.
-6. **Telemetry & Feedback**: Simulation updates are written to `telemetry.json` and mirrored in shared memory.
+3. **Durable Enqueue**: Python appends the validated command to `requests.txt` under a cross-process lock, then commits the JSON with a same-directory atomic replace and bounded Windows retry loop.
+4. **Session Safety**: Every job is tied to the active city session. Expired, replayed, or cross-city jobs fail closed instead of executing in the wrong save.
+5. **Queue & Budgeting**: `core.lua` polls the mailbox, expands area operations into work units, and processes at most 16 units every 100 ms so large plans do not freeze the game.
+6. **Telemetry & Feedback**: TheoTown writes protocol-v2 heartbeats to `telemetry.txt` and bounded job results to `job_<job_id>.txt`; MCP clients can poll progress or cancel pending work.
 
 ---
 
@@ -85,25 +84,42 @@ A production-grade **Model Context Protocol (MCP)** server bridging AI agents (C
 
 #### Installation Steps
 ```powershell
-# 1. Clone the repository
+# Option A: Install from Wheel (Production Package)
+python -m hatchling build
+pip install dist/theotown_mcp-0.2.0-py3-none-any.whl
+
+# Option B: Clone & Install in Editable Mode (Development)
 git clone https://github.com/d-init-d/theotown-mcp.git
 cd theotown-mcp
-
-# 2. Install Python package in editable mode
 pip install -e .
 
-# 3. Deploy in-game Lua plugin to TheoTown
+# 3. Deploy in-game Lua plugin non-destructively
 theotown-mcp install-plugin
 
 # 4. Verify IPC and storage communication
 theotown-mcp probe-ipc
 ```
 
-> **Note on Initial Discovery**: TheoTown discovers newly created plugin folders when the game starts. If TheoTown was running when you ran `install-plugin`, restart the game once. Once loaded, all subsequent commands hot-reload dynamically with zero restarts.
+> **Note on Initial Discovery**: TheoTown discovers newly created plugin folders when the game starts. If TheoTown was running when you ran `install-plugin`, restart the game once. After startup, `core.lua` consumes new jobs as JSON data without modifying or executing Lua source files.
 
 ---
 
-### 3. Client Configurations
+### 3. Guardrails, Batch Limits & Job Lifecycle
+
+- **Batch Safeguards**:
+  - Maximum commands per plan: **250 commands**.
+  - Maximum affected tiles per plan: **10,000 tiles**.
+  - Strict coordinate validation: `x >= 0, y >= 0`, strictly bounded by the active city's width and height.
+- **Job Lifecycle**:
+  - `pending`: Durably queued in `requests.txt` for the active city session.
+  - `running`: Actively being executed in-game across frame ticks.
+  - `completed`: All work units successfully placed.
+  - `failed`: Any work unit failed (e.g. obstruction, terrain, insufficient funds), with structured error messages and step counts (`attempted_steps`, `completed_steps`, `failed_steps`).
+  - `cancelled`: Aborted via `theotown_cancel_job`.
+
+---
+
+### 4. Client Configurations
 
 #### Claude Desktop
 Add to `%APPDATA%\Claude\claude_desktop_config.json`:
@@ -157,16 +173,16 @@ Then connect clients to `http://127.0.0.1:8000/mcp`.
 
 ---
 
-### 4. API Reference
+### 5. API Reference
 
 #### Tools (12 Tools)
 | Tool Name | Parameters | Description |
 |---|---|---|
 | `theotown_get_status` | *None* | Get current city status (money, population, happiness, dimensions, speed, date). |
-| `theotown_build_road` | `x0`, `y0`, `x1`, `y1`, `road_type`, `level` | Construct a road between two coordinates. Slices roads > 32 tiles automatically. |
+| `theotown_build_road` | `x0`, `y0`, `x1`, `y1`, `road_type`, `level` | Construct a horizontal or vertical road between two coordinates. |
 | `theotown_build_zone` | `x`, `y`, `width`, `height`, `zone_type` | Designate a rectangular zone (residential, commercial, industrial). |
 | `theotown_build_building` | `x`, `y`, `building_id`, `rotation` | Construct a specific building draft by ID or friendly alias. |
-| `theotown_build_utilities` | `x0`, `y0`, `x1`, `y1`, `utility_type`, `level` | Place utility lines (pipe or wire) between two coordinates. |
+| `theotown_build_utilities` | `x0`, `y0`, `x1`, `y1`, `utility_type` | Place a horizontal or vertical pipe or wire. TheoTown may reject occupied, water, or unsuitable tiles. |
 | `theotown_demolish` | `x`, `y`, `width`, `height` | Demolish buildings, zones, or terrain across a rectangular area. |
 | `theotown_validate_plan` | `commands`, `dry_run` | Validate an entire multi-step urban plan without modifying the game world. |
 | `theotown_execute_plan` | `commands` | Enqueue a multi-step batch plan for staged execution. |
@@ -196,9 +212,10 @@ Then connect clients to `http://127.0.0.1:8000/mcp`.
 `theotown-mcp` kết nối trực tiếp khả năng lập luận của các AI Agent tới game mô phỏng đô thị **TheoTown** mà không cần khởi động lại game hay giả lập click chuột trên màn hình:
 
 - **Python MCP Server (`src/theotown_mcp`)**: Xây dựng trên chuẩn MCP SDK v2 (`MCPServer`), cung cấp 12 công cụ (tools), 2 tài nguyên (resources) và 1 prompt hướng dẫn quy hoạch đô thị.
-- **Cầu nối tệp tin nguyên tử (Atomic Filesystem IPC Bridge - `bridge.py`)**: Ghi mã nguồn Lua vào `inbox.lua` thông qua quy trình tạo tệp tạm cùng ổ đĩa, flush, fsync và `os.replace` có cơ chế thử lại (exponential retry) chống xung đột khóa tệp trên Windows (`[WinError 32]`).
-- **Trình nạp nóng `#LuaWrapper`**: `plugin.json` cấu hình `dev: true` trên `inbox.lua`, giúp TheoTown tự động phát hiện thay đổi tệp tin và thực thi ngay lập tức trong máy ảo JVM Luaj (~16ms).
-- **Bộ điều phối tác vụ `core.lua`**: Duy trì hàng đợi FIFO, điều tiết giới hạn tải (tối đa 64 ô / 3ms mỗi khung hình tick) để đảm bảo game không bị giật lag, tự động cắt các đoạn đường dài hơn 32 ô thành các phân đoạn liên tục có khớp nối và gửi dữ liệu đo lường (telemetry) về thành phố.
+- **Cầu nối tệp tin nguyên tử (`bridge.py`)**: Ghi dữ liệu JSON vào `requests.txt` bằng khóa liên tiến trình, tệp tạm cùng thư mục, `fsync` và `os.replace` có thử lại khi Windows tạm khóa tệp.
+- **Hộp thư giao thức v2**: Giữ tối đa 64 tác vụ, gắn mỗi tác vụ với phiên thành phố hiện tại, hỗ trợ TTL, hủy có xác nhận và chống phát lại sau khi plugin khởi động lại.
+- **Bộ điều phối `core.lua`**: Đọc hộp thư định kỳ, xử lý tối đa 16 đơn vị công việc mỗi 100 ms, dùng API `Builder` chính thức để kiểm tra/xây và API `Tile` để xác nhận kết quả.
+- **Phản hồi có giới hạn**: Kết quả lưu số bước thành công/thất bại, tối đa 64 lỗi mẫu có tọa độ và bảng đếm lỗi, tránh làm phình file hoặc phản hồi MCP.
 
 ---
 
@@ -211,25 +228,42 @@ Then connect clients to `http://127.0.0.1:8000/mcp`.
 
 #### Các bước cài đặt
 ```powershell
-# 1. Tải mã nguồn dự án
+# Cách A: Cài đặt từ gói Wheel phân phối (Production)
+python -m hatchling build
+pip install dist/theotown_mcp-0.2.0-py3-none-any.whl
+
+# Cách B: Cài đặt ở chế độ phát triển (Editable Development)
 git clone https://github.com/d-init-d/theotown-mcp.git
 cd theotown-mcp
-
-# 2. Cài đặt package Python ở chế độ editable
 pip install -e .
 
-# 3. Cài đặt plugin Lua vào thư mục plugins của TheoTown
+# 3. Cài đặt plugin Lua an toàn vào thư mục plugins của TheoTown
 theotown-mcp install-plugin
 
 # 4. Kiểm tra đường truyền giao tiếp IPC
 theotown-mcp probe-ipc
 ```
 
-> **Lưu ý**: Lần đầu tiên sau khi cài đặt plugin bằng lệnh `theotown-mcp install-plugin`, hãy khởi động lại trò chơi TheoTown một lần để game quét và nạp thư mục plugin mới. Từ các lần sau, mọi lệnh xây dựng của AI sẽ được cập nhật nóng tức thì mà không cần khởi động lại.
+> **Lưu ý**: Lần đầu tiên sau khi cài đặt plugin bằng lệnh `theotown-mcp install-plugin`, hãy khởi động lại TheoTown một lần để game nạp `core.lua`. Sau đó plugin nhận tác vụ mới dưới dạng dữ liệu JSON mà không cần sửa hoặc thực thi mã Lua động.
 
 ---
 
-### 3. Hướng Dẫn Cấu Hình Cho Các Nền Tảng AI
+### 3. Cơ Chế Bảo Vệ, Giới Hạn & Trạng Thái Tác Vụ
+
+- **Giới Hạn An Toàn**:
+  - Tối đa **250 lệnh** cho mỗi kế hoạch (plan).
+  - Tối đa **10,000 ô** diện tích ảnh hưởng cho mỗi kế hoạch.
+  - Tọa độ nghiêm ngặt: `x >= 0, y >= 0`, giới hạn chính xác theo kích thước bản đồ hiện tại.
+- **Vòng Đời Tác Vụ (Job Lifecycle)**:
+  - `pending`: Đã được ghi bền vững vào `requests.txt` cho đúng phiên thành phố.
+  - `running`: Đang được game thực thi từng bước theo khung hình tick.
+  - `completed`: Toàn bộ các bước xây dựng thành công 100%.
+  - `failed`: Có bước gặp lỗi (vướng địa hình, thiếu tiền...), lưu vết chi tiết `attempted_steps`, `completed_steps`, `failed_steps` và danh sách lỗi.
+  - `cancelled`: Đã hủy thành công qua lệnh `theotown_cancel_job`.
+
+---
+
+### 4. Hướng Dẫn Cấu Hình Cho Các Nền Tảng AI
 
 #### Claude Desktop
 Mở tệp cấu hình tại `%APPDATA%\Claude\claude_desktop_config.json` và thêm:
@@ -274,14 +308,14 @@ mcp_servers:
 
 ---
 
-### 4. Danh Sách Công Cụ & Tài Nguyên
+### 5. Danh Sách Công Cụ & Tài Nguyên
 
 - **Công cụ xây dựng & quản trị (12 Tools)**:
   - `theotown_get_status`: Lấy thông tin tài chính, dân số, độ hạnh phúc, kích thước bản đồ và tốc độ game.
-  - `theotown_build_road`: Xây dựng mạng lưới đường bộ, tự động chia nhỏ đoạn dài > 32 ô.
+  - `theotown_build_road`: Xây đường ngang hoặc dọc giữa hai tọa độ với draft và cao độ chỉ định.
   - `theotown_build_zone`: Quy hoạch các khu dân cư, thương mại, công nghiệp.
   - `theotown_build_building`: Đặt công trình theo ID hoặc tên gọi đại diện (alias).
-  - `theotown_build_utilities`: Đặt hệ thống ống dẫn nước và dây điện.
+  - `theotown_build_utilities`: Đặt ống nước hoặc dây điện theo đường ngang/dọc; game có thể từ chối ô đã bị chiếm, ô nước hoặc địa hình không phù hợp.
   - `theotown_demolish`: Giải phóng mặt bằng, phá dỡ công trình hoặc đường sá.
   - `theotown_validate_plan`: Kiểm tra trước tính hợp lệ và ước lượng chi phí của kế hoạch quy hoạch mà không làm thay đổi bản đồ.
   - `theotown_execute_plan`: Đưa một danh sách lệnh vào hàng đợi để xây dựng dần theo khung hình.
@@ -299,7 +333,7 @@ mcp_servers:
 
 ---
 
-### 5. Kiểm Thử Tự Động (Testing)
+### 6. Kiểm Thử Tự Động (Testing)
 
 Để chạy toàn bộ bộ kiểm thử tự động (Unit Tests & End-to-End Suite):
 ```powershell

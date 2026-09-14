@@ -39,7 +39,7 @@ class TestTier4CityScenarios:
         # 3. Utilities: Water tower and Power wires
         await mock_env.server.call_tool("theotown_build_building", {"x": 8, "y": 8, "building_id": "$watertower00"})
         mock_env.simulator.process_inbox()
-        await mock_env.server.call_tool("theotown_build_utilities", {"x0": 8, "y0": 8, "x1": 10, "y1": 10, "utility_type": "pipe"})
+        await mock_env.server.call_tool("theotown_build_utilities", {"x0": 8, "y0": 8, "x1": 10, "y1": 8, "utility_type": "pipe"})
         mock_env.simulator.process_inbox()
 
         # Invariants
@@ -103,7 +103,7 @@ class TestTier4CityScenarios:
         # High density rebuild
         await mock_env.server.call_tool("theotown_build_zone", {"x": 20, "y": 20, "width": 4, "height": 4, "zone_type": "residential_high"})
         mock_env.simulator.process_inbox()
-        assert mock_env.oracle.grid[(20, 20)]["zone"] == "$zone_residential_2"
+        assert mock_env.oracle.grid[(20, 20)]["zone"] == "$zoneresidential_lvl2"
 
     def test_sc06_disaster_recovery_pipeline(self, mock_env: MockTheoTownEnv):
         """SC06: Disaster destroys road and utility, clear debris and reconnect."""
@@ -145,8 +145,9 @@ class TestTier4CityScenarios:
 
         # Cancel job immediately
         c_res = mock_env.bridge.cancel_job(job.job_id)
-        assert c_res["status"] == "cancelled"
-        assert mock_env.bridge.jobs[job.job_id].status == "cancelled"
+        assert c_res["status"] == "cancel_requested"
+        assert mock_env.simulator.process_inbox().status == "cancelled"
+        assert mock_env.bridge.get_job_status(job.job_id).status == "cancelled"
 
     @pytest.mark.anyio
     async def test_sc09_multi_agent_mesh_load(self, mock_env: MockTheoTownEnv):

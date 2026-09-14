@@ -34,7 +34,7 @@ class TestFeatureF11Packaging:
             data = tomllib.load(f)
         proj = data["project"]
         assert proj["name"] == "theotown-mcp"
-        assert proj["version"] == "0.1.0"
+        assert proj["version"] == "0.2.0"
         assert proj["license"]["text"] == "MIT"
 
     def test_e2e_t1_f11_04_cli_entrypoint_registered(self):
@@ -54,4 +54,4 @@ class TestFeatureF11Packaging:
         import theotown_mcp.models
         import theotown_mcp.server
 
-        assert theotown_mcp.__version__ == "0.1.0"
+        assert theotown_mcp.__version__ == "0.2.0"

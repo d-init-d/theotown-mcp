@@ -8,9 +8,6 @@ Provides subcommands:
 
 from __future__ import annotations
 
-import os
-import shutil
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -21,7 +18,7 @@ from theotown_mcp.server import create_server
 
 app = typer.Typer(
     name="theotown-mcp",
-    help="TheoTown MCP Server CLI — Autonomous AI City Planning & Construction",
+    help="TheoTown MCP Server CLI - Autonomous AI City Planning & Construction",
     add_completion=False,
     no_args_is_help=True,
 )
@@ -89,61 +86,39 @@ def probe_ipc(
     typer.secho("[+] Probe IPC diagnostics completed successfully.", fg=typer.colors.GREEN)
 
 
+from theotown_mcp.assets import install_plugin_files
+
+
 @app.command("install-plugin")
 def install_plugin(
     force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing plugin files")] = False,
-    symlink: Annotated[bool, typer.Option("--symlink", "-s", help="Create directory symlink instead of copying")] = False,
+    backup: Annotated[bool, typer.Option("--backup", "-b", help="Create .bak backup of overwritten files")] = True,
+    symlink: Annotated[bool, typer.Option("--symlink", "-s", help="Create symlinks instead of copying")] = False,
     data_dir: Annotated[str | None, typer.Option("--data-dir", "-d", help="Override TheoTown data directory")] = None,
 ) -> None:
     """Install the TheoTown MCP Lua plugin into %USERPROFILE%\\TheoTown\\plugins\\theotown_mcp\\."""
     config = get_config(data_dir_override=data_dir)
     target_dir = config.plugin_dir
 
-    typer.echo(f"[*] Installing Lua plugin assets (force={force}, symlink={symlink})...")
+    typer.echo(f"[*] Installing Lua plugin assets (force={force}, backup={backup}, symlink={symlink})...")
     typer.echo(f"[*] Target destination: {target_dir}")
 
-    # Locate source plugin directory
-    candidate_sources = [
-        Path(__file__).resolve().parent.parent.parent / "plugin" / "theotown_mcp",
-        Path.cwd() / "plugin" / "theotown_mcp",
-    ]
-    source_dir: Path | None = None
-    for cand in candidate_sources:
-        if cand.exists() and cand.is_dir():
-            source_dir = cand
-            break
-
-    if source_dir is None:
-        typer.secho(
-            "[-] Error: Could not locate source plugin directory in repository ('plugin/theotown_mcp').",
-            fg=typer.colors.RED,
+    try:
+        installed = install_plugin_files(
+            target_dir=target_dir,
+            force=force,
+            backup=backup,
+            symlink=symlink,
         )
-        raise typer.Exit(code=1)
-
-    if target_dir.exists():
-        if not force:
-            typer.secho(
-                f"[-] Warning: Destination {target_dir} already exists. Use --force to overwrite.",
-                fg=typer.colors.YELLOW,
-            )
-            return
-        if target_dir.is_symlink():
-            target_dir.unlink()
-        elif target_dir.is_dir():
-            shutil.rmtree(target_dir)
-
-    target_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    if symlink:
-        try:
-            os.symlink(source_dir, target_dir, target_is_directory=True)
-            typer.secho(f"[+] Successfully symlinked plugin from {source_dir} to {target_dir}", fg=typer.colors.GREEN)
-            return
-        except OSError as exc:
-            typer.secho(f"[-] Symlink failed ({exc}). Falling back to directory copy...", fg=typer.colors.YELLOW)
-
-    shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
-    typer.secho(f"[+] Successfully installed plugin to {target_dir}", fg=typer.colors.GREEN)
+        if installed:
+            typer.secho(f"[+] Successfully installed plugin ({len(installed)} files) to {target_dir}:", fg=typer.colors.GREEN)
+            for f in installed:
+                typer.secho(f"    - {f.name}", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"[*] All plugin files already exist in {target_dir}. Use --force to overwrite.", fg=typer.colors.YELLOW)
+    except Exception as exc:
+        typer.secho(f"[-] Installation failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("run")
@@ -151,22 +126,25 @@ def run_server(
     transport: Annotated[str, typer.Option("--transport", "-t", help="Transport mode: stdio or http")] = "stdio",
     host: Annotated[str, typer.Option("--host", "-h", help="Bind host for HTTP transport")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port for HTTP transport")] = 8000,
+    data_dir: Annotated[str | None, typer.Option("--data-dir", "-d", help="Override TheoTown data directory")] = None,
 ) -> None:
     """Launch the TheoTown Model Context Protocol server."""
     if transport not in ("stdio", "http", "streamable-http"):
         typer.secho(
             f"Error: Unknown transport '{transport}'. Choose 'stdio' or 'http'.",
             fg=typer.colors.RED,
+            err=True,
         )
         raise typer.Exit(code=1)
 
-    server = create_server()
+    cfg = get_config(data_dir_override=data_dir)
+    server = create_server(config=cfg)
 
     if transport == "stdio":
-        typer.echo("[*] Starting TheoTown MCP Server on STDIO transport...")
+        typer.echo("[*] Starting TheoTown MCP Server on STDIO transport...", err=True)
         server.run(transport="stdio")
     elif transport in ("http", "streamable-http"):
-        typer.echo(f"[*] Starting TheoTown MCP Server on Streamable HTTP transport ({host}:{port}/mcp)...")
+        typer.echo(f"[*] Starting TheoTown MCP Server on Streamable HTTP transport ({host}:{port}/mcp)...", err=True)
         server.run(transport="streamable-http", host=host, port=port)
 
 

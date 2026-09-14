@@ -44,18 +44,28 @@ class TheoTownConfig(BaseModel):
 
     @property
     def inbox_path(self) -> Path:
-        """Atomic IPC inbox file watched by #LuaWrapper."""
+        """Legacy static Lua file retained for compatibility checks."""
         return self.plugin_dir / "inbox.lua"
+
+    @property
+    def requests_path(self) -> Path:
+        """Durable JSON command mailbox consumed by core.lua."""
+        return self.plugin_dir / "requests.txt"
+
+    @property
+    def mailbox_lock_path(self) -> Path:
+        """Cross-process lock protecting requests.txt read-modify-write operations."""
+        return self.plugin_dir / "requests.lock"
 
     @property
     def telemetry_path(self) -> Path:
         """Telemetry state file written by Lua core.lua."""
-        return self.plugin_dir / "telemetry.json"
+        return self.plugin_dir / "telemetry.txt"
 
     @property
     def drafts_path(self) -> Path:
         """Cached drafts catalog file exported by core.lua."""
-        return self.plugin_dir / "drafts.json"
+        return self.plugin_dir / "drafts.txt"
 
     @property
     def pmodext_path(self) -> Path:
@@ -89,3 +99,9 @@ def get_config(data_dir_override: Path | str | None = None, refresh: bool = Fals
     if _global_config is None or refresh:
         _global_config = TheoTownConfig()
     return _global_config
+
+
+def reset_config() -> None:
+    """Resets the global config singleton for clean test isolation."""
+    global _global_config
+    _global_config = None

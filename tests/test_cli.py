@@ -4,6 +4,8 @@ Unit tests for Typer CLI subcommands in theotown_mcp.cli.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -21,6 +23,16 @@ class TestCliCommands:
         assert "probe-ipc" in result.output
         assert "install-plugin" in result.output
         assert "run" in result.output
+
+    def test_module_entrypoint_does_not_import_cli_twice(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "theotown_mcp.cli", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert "RuntimeWarning" not in result.stderr
 
     def test_cli_probe_ipc_success(self, tmp_path: Path):
         mock_data = tmp_path / "TheoTown"

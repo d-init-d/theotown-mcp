@@ -28,10 +28,9 @@ class TestCrossFeatureCombinations:
         assert json.loads(raw)["canary"] == "CANARY_TOKEN_01"
 
     def test_comb_02_f03_f10_manifest_and_inbox(self, mock_env: MockTheoTownEnv):
-        """COMB-02: F03 + F10 (Manifest dev flag + inbox template reload)."""
+        """COMB-02: F03 + F10 (static manifest + data mailbox)."""
         manifest = json.loads(Path("plugin/theotown_mcp/plugin.json").read_text(encoding="utf-8"))
-        inbox_entry = next(d for d in manifest if d["id"] == "$theotown_mcp_inbox")
-        assert inbox_entry["dev"] is True
+        assert [entry["script"] for entry in manifest] == ["core.lua"]
         assert Path("plugin/theotown_mcp/inbox.lua").exists()
 
     def test_comb_03_f04_f05_fifo_and_budgeting(self, mock_env: MockTheoTownEnv):
@@ -63,16 +62,16 @@ class TestCrossFeatureCombinations:
 
     def test_comb_06_f09_f14_draft_discovery_and_alias(self, mock_env: MockTheoTownEnv):
         """COMB-06: F09 + F14 (Dynamic draft discovery + runtime alias manager)."""
-        assert mock_env.catalog.resolve_draft_id("two_lane_road") == "$road03"
+        assert mock_env.catalog.resolve_draft_id("two_lane_road") == "$road00"
         draft = mock_env.catalog.get_draft("two_lane_road")
         assert draft is not None
-        assert draft["id"] == "$road03"
+        assert draft["id"] == "$road00"
 
     def test_comb_07_f12_f15_dsl_and_atomic_bridge(self, mock_env: MockTheoTownEnv):
         """COMB-07: F12 + F15 (DSL models validation + atomic bridge writing)."""
         cmd = BuildRoadCmd(x0=5, y0=5, x1=15, y1=5)
         job = mock_env.bridge.execute_plan([cmd])
-        inbox_content = mock_env.config.inbox_path.read_text(encoding="utf-8")
+        inbox_content = mock_env.config.requests_path.read_text(encoding="utf-8")
         assert job.job_id in inbox_content
 
     @pytest.mark.anyio

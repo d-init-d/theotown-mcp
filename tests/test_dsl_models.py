@@ -30,7 +30,7 @@ class TestBuildRoadCmd:
         assert cmd.y0 == 10
         assert cmd.x1 == 25
         assert cmd.y1 == 10
-        assert cmd.road_type == "$road03"
+        assert cmd.road_type == "$road00"
         assert cmd.level == 0
         assert cmd.tile_length == 16
 

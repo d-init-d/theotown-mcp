@@ -4,9 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "theotown-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Model Context Protocol (MCP) server for TheoTown city simulation"
-readme = { text = "# TheoTown MCP Server\nModel Context Protocol (MCP) server for TheoTown city simulation", content-type = "text/markdown" }
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
@@ -50,4 +50,3 @@ minversion = "8.0"
 addopts = "-ra -q --strict-markers"
 testpaths = ["tests"]
 pythonpath = ["src"]
-asyncio_mode = "auto"

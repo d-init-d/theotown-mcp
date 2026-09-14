@@ -48,7 +48,7 @@ class TestF13F18Boundaries:
     # --- F14: Draft Catalog Boundaries (5) ---
     def test_e2e_t2_f14_01_alias_mixed_case(self, mock_env: MockTheoTownEnv):
         """Mixed-case alias resolution."""
-        assert mock_env.catalog.resolve_draft_id("Two_Lane_Road") == "$road03"
+        assert mock_env.catalog.resolve_draft_id("Two_Lane_Road") == "$road00"
 
     def test_e2e_t2_f14_02_alias_leading_trailing_spaces(self, mock_env: MockTheoTownEnv):
         """Spaces in alias cleaned before lookup."""
