@@ -22,7 +22,7 @@ class TestFeatureF20Documentation:
         content = Path("README.md").read_text(encoding="utf-8")
         assert "claude_desktop_config.json" in content
         assert '"theotown"' in content
-        assert '"theotown-mcp"' in content
+        assert "theotown-mcp.exe" in content
 
     def test_e2e_t1_f20_03_cursor_config_block(self):
         """README.md contains Cursor config snippet."""

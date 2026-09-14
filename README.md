@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP SDK v2](https://img.shields.io/badge/MCP%20SDK-v2.2.0-green.svg)](https://modelcontextprotocol.io/)
+[![CI](https://github.com/d-init-d/theotown-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/d-init-d/theotown-mcp/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/d-init-d/theotown-mcp)](https://github.com/d-init-d/theotown-mcp/releases/latest)
 
 A production-grade **Model Context Protocol (MCP)** server bridging AI agents (Claude Desktop, Cursor IDE, Hermes Agent, Antigravity) to the **TheoTown** city simulation game. It empowers AI models to inspect city states, design urban layouts, and construct road networks, buildings, zones, and utilities through the official TheoTown Lua API and a durable JSON mailbox.
 
@@ -17,7 +19,7 @@ A production-grade **Model Context Protocol (MCP)** server bridging AI agents (C
 
 ### 1. Architecture & IPC Flow
 
-`theotown-mcp` connects AI agent reasoning to TheoTown's in-game engine without requiring game client restarts or simulated UI mouse clicks:
+`theotown-mcp` connects AI agent reasoning to TheoTown's in-game engine without per-command restarts or simulated UI mouse clicks:
 
 ```
 +--------------------------------------------------------------------------------+
@@ -82,25 +84,81 @@ A production-grade **Model Context Protocol (MCP)** server bridging AI agents (C
 - Python 3.10 or higher (Python 3.11+ recommended)
 - TheoTown (Steam or standalone) installed at `%USERPROFILE%\TheoTown`
 
-#### Installation Steps
+#### Install for a person (recommended)
+
+1. Download `theotown_mcp-0.2.0-py3-none-any.whl` from the [latest GitHub release](https://github.com/d-init-d/theotown-mcp/releases/latest).
+2. Open PowerShell and run:
+
 ```powershell
-# Option A: Install from Wheel (Production Package)
-python -m hatchling build
-pip install dist/theotown_mcp-0.2.0-py3-none-any.whl
-
-# Option B: Clone & Install in Editable Mode (Development)
-git clone https://github.com/d-init-d/theotown-mcp.git
-cd theotown-mcp
-pip install -e .
-
-# 3. Deploy in-game Lua plugin non-destructively
-theotown-mcp install-plugin
-
-# 4. Verify IPC and storage communication
-theotown-mcp probe-ipc
+$McpHome = Join-Path $env:USERPROFILE ".theotown-mcp"
+py -3.11 -m venv $McpHome
+& "$McpHome\Scripts\python.exe" -m pip install --upgrade pip
+& "$McpHome\Scripts\python.exe" -m pip install "$env:USERPROFILE\Downloads\theotown_mcp-0.2.0-py3-none-any.whl"
+& "$McpHome\Scripts\theotown-mcp.exe" install-plugin --backup
+& "$McpHome\Scripts\theotown-mcp.exe" probe-ipc
 ```
 
-> **Note on Initial Discovery**: TheoTown discovers newly created plugin folders when the game starts. If TheoTown was running when you ran `install-plugin`, restart the game once. After startup, `core.lua` consumes new jobs as JSON data without modifying or executing Lua source files.
+3. Restart TheoTown once, open a city, and keep it open while the MCP client is operating.
+4. Add the server to your MCP client using the absolute executable path shown below. Replace `<USERNAME>` with your Windows user name.
+
+```json
+{
+  "mcpServers": {
+    "theotown": {
+      "command": "C:\\Users\\<USERNAME>\\.theotown-mcp\\Scripts\\theotown-mcp.exe",
+      "args": ["run", "--transport", "stdio"],
+      "env": {
+        "THEOTOWN_DATA_DIR": "C:\\Users\\<USERNAME>\\TheoTown"
+      }
+    }
+  }
+}
+```
+
+Restart the MCP client after saving its configuration. Ask it to call `theotown_get_status`; a healthy connection reports `connected: true`, `protocol: 2`, and `diagnostics_error: null`.
+
+#### Install or upgrade with an AI agent / bot
+
+Give the bot the following task. It is intentionally explicit so the bot can complete installation without guessing paths or editing game saves:
+
+```text
+Install TheoTown MCP v0.2.0 on this Windows machine. Create an isolated virtual
+environment at %USERPROFILE%\.theotown-mcp, install the wheel from
+https://github.com/d-init-d/theotown-mcp/releases/download/v0.2.0/theotown_mcp-0.2.0-py3-none-any.whl,
+run `theotown-mcp install-plugin --force --backup`, and then run
+`theotown-mcp probe-ipc`. Configure my MCP client to start the server over stdio
+using the absolute path to the virtual environment executable. Preserve all city
+saves, telemetry files, and job history. Tell me to restart TheoTown once and open
+a test city. After restart, verify `theotown_get_status` returns `connected: true`,
+`protocol: 2`, and no `diagnostics_error`. Do not execute a construction plan until
+`theotown_validate_plan` reports `valid: true`.
+```
+
+For unattended PowerShell installation, a bot can run:
+
+```powershell
+$McpHome = Join-Path $env:USERPROFILE ".theotown-mcp"
+if (-not (Test-Path "$McpHome\Scripts\python.exe")) { py -3.11 -m venv $McpHome }
+& "$McpHome\Scripts\python.exe" -m pip install --upgrade pip
+& "$McpHome\Scripts\python.exe" -m pip install --upgrade "https://github.com/d-init-d/theotown-mcp/releases/download/v0.2.0/theotown_mcp-0.2.0-py3-none-any.whl"
+& "$McpHome\Scripts\theotown-mcp.exe" install-plugin --force --backup
+& "$McpHome\Scripts\theotown-mcp.exe" probe-ipc
+```
+
+`install-plugin` only manages `plugin.json`, `core.lua`, and `inbox.lua`. It preserves city saves and runtime files such as telemetry, queued requests, and job results. `--backup` keeps `.bak` copies of replaced plugin files.
+
+#### Install from source (contributors)
+
+```powershell
+git clone https://github.com/d-init-d/theotown-mcp.git
+Set-Location theotown-mcp
+py -3.11 -m venv .venv
+& ".\.venv\Scripts\python.exe" -m pip install -e ".[dev]"
+& ".\.venv\Scripts\theotown-mcp.exe" install-plugin --force --backup
+& ".\.venv\Scripts\python.exe" -m pytest
+```
+
+> **Initial discovery:** TheoTown loads the static `core.lua` when the game starts. Restart the game after every plugin upgrade. New jobs then travel as JSON data and do not require further restarts.
 
 ---
 
@@ -121,13 +179,15 @@ theotown-mcp probe-ipc
 
 ### 4. Client Configurations
 
+Use the absolute virtual-environment executable path from the installation section. This avoids `PATH` differences between a terminal and a desktop MCP client.
+
 #### Claude Desktop
 Add to `%APPDATA%\Claude\claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "theotown": {
-      "command": "theotown-mcp",
+      "command": "C:\\Users\\<USERNAME>\\.theotown-mcp\\Scripts\\theotown-mcp.exe",
       "args": ["run", "--transport", "stdio"],
       "env": {
         "THEOTOWN_DATA_DIR": "C:\\Users\\<USERNAME>\\TheoTown"
@@ -143,7 +203,7 @@ Add to `.cursor/mcp.json` or Cursor Settings -> Features -> MCP:
 {
   "mcpServers": {
     "theotown": {
-      "command": "theotown-mcp",
+      "command": "C:\\Users\\<USERNAME>\\.theotown-mcp\\Scripts\\theotown-mcp.exe",
       "args": ["run", "--transport", "stdio"]
     }
   }
@@ -155,7 +215,7 @@ In your Hermes agent configuration file (`hermes.yaml` or `config.json`):
 ```yaml
 mcp_servers:
   theotown:
-    command: theotown-mcp
+    command: C:\Users\<USERNAME>\.theotown-mcp\Scripts\theotown-mcp.exe
     args:
       - run
       - --transport
@@ -226,25 +286,71 @@ Then connect clients to `http://127.0.0.1:8000/mcp`.
 - Python: 3.10 trở lên
 - Trò chơi TheoTown (Steam hoặc bản độc lập) cài đặt tại `%USERPROFILE%\TheoTown`
 
-#### Các bước cài đặt
+#### Cài cho người dùng (khuyến nghị)
+
+1. Tải `theotown_mcp-0.2.0-py3-none-any.whl` từ [GitHub Release mới nhất](https://github.com/d-init-d/theotown-mcp/releases/latest).
+2. Mở PowerShell và chạy:
+
 ```powershell
-# Cách A: Cài đặt từ gói Wheel phân phối (Production)
-python -m hatchling build
-pip install dist/theotown_mcp-0.2.0-py3-none-any.whl
-
-# Cách B: Cài đặt ở chế độ phát triển (Editable Development)
-git clone https://github.com/d-init-d/theotown-mcp.git
-cd theotown-mcp
-pip install -e .
-
-# 3. Cài đặt plugin Lua an toàn vào thư mục plugins của TheoTown
-theotown-mcp install-plugin
-
-# 4. Kiểm tra đường truyền giao tiếp IPC
-theotown-mcp probe-ipc
+$McpHome = Join-Path $env:USERPROFILE ".theotown-mcp"
+py -3.11 -m venv $McpHome
+& "$McpHome\Scripts\python.exe" -m pip install --upgrade pip
+& "$McpHome\Scripts\python.exe" -m pip install "$env:USERPROFILE\Downloads\theotown_mcp-0.2.0-py3-none-any.whl"
+& "$McpHome\Scripts\theotown-mcp.exe" install-plugin --backup
+& "$McpHome\Scripts\theotown-mcp.exe" probe-ipc
 ```
 
-> **Lưu ý**: Lần đầu tiên sau khi cài đặt plugin bằng lệnh `theotown-mcp install-plugin`, hãy khởi động lại TheoTown một lần để game nạp `core.lua`. Sau đó plugin nhận tác vụ mới dưới dạng dữ liệu JSON mà không cần sửa hoặc thực thi mã Lua động.
+3. Khởi động lại TheoTown một lần, mở một thành phố và giữ game chạy khi AI sử dụng MCP.
+4. Thêm máy chủ vào cấu hình MCP. Thay `<TÊN_USER>` bằng tên tài khoản Windows:
+
+```json
+{
+  "mcpServers": {
+    "theotown": {
+      "command": "C:\\Users\\<TÊN_USER>\\.theotown-mcp\\Scripts\\theotown-mcp.exe",
+      "args": ["run", "--transport", "stdio"],
+      "env": {
+        "THEOTOWN_DATA_DIR": "C:\\Users\\<TÊN_USER>\\TheoTown"
+      }
+    }
+  }
+}
+```
+
+Khởi động lại ứng dụng AI sau khi lưu cấu hình. Yêu cầu AI gọi `theotown_get_status`; kết nối đạt yêu cầu phải có `connected: true`, `protocol: 2` và `diagnostics_error: null`.
+
+#### Cài đặt hoặc nâng cấp bằng AI/bot
+
+Gửi nguyên prompt sau cho bot:
+
+```text
+Cài TheoTown MCP v0.2.0 trên máy Windows này. Tạo virtual environment riêng tại
+%USERPROFILE%\.theotown-mcp, cài wheel từ
+https://github.com/d-init-d/theotown-mcp/releases/download/v0.2.0/theotown_mcp-0.2.0-py3-none-any.whl,
+chạy `theotown-mcp install-plugin --force --backup`, sau đó chạy
+`theotown-mcp probe-ipc`. Cấu hình ứng dụng MCP của tôi chạy máy chủ qua stdio
+bằng đường dẫn tuyệt đối tới executable trong virtual environment. Giữ nguyên mọi
+save thành phố, telemetry và lịch sử job. Nhắc tôi khởi động lại TheoTown một lần
+và mở thành phố thử nghiệm. Sau khi game mở lại, xác minh
+`theotown_get_status` trả về `connected: true`, `protocol: 2` và không có
+`diagnostics_error`. Không thực thi kế hoạch xây dựng trước khi
+`theotown_validate_plan` trả về `valid: true`.
+```
+
+Bot có thể dùng khối PowerShell tự động trong phần English ở trên. Lệnh `install-plugin` chỉ quản lý `plugin.json`, `core.lua` và `inbox.lua`; save thành phố cùng dữ liệu runtime được giữ nguyên. Tùy chọn `--backup` tạo bản `.bak` cho plugin cũ.
+
+#### Cài từ mã nguồn dành cho người phát triển
+
+```powershell
+git clone https://github.com/d-init-d/theotown-mcp.git
+Set-Location theotown-mcp
+py -3.11 -m venv .venv
+& ".\.venv\Scripts\python.exe" -m pip install -e ".[dev]"
+& ".\.venv\Scripts\theotown-mcp.exe" install-plugin --force --backup
+& ".\.venv\Scripts\python.exe" -m pytest
+```
+
+> **Lưu ý khi nâng cấp:** TheoTown nạp `core.lua` tĩnh lúc khởi động. Hãy khởi động lại game sau mỗi lần nâng cấp plugin. Các job mới sau đó được truyền dưới dạng JSON và không cần khởi động lại tiếp.
 
 ---
 
@@ -265,13 +371,15 @@ theotown-mcp probe-ipc
 
 ### 4. Hướng Dẫn Cấu Hình Cho Các Nền Tảng AI
 
+Luôn dùng đường dẫn tuyệt đối tới executable trong virtual environment để ứng dụng AI không phụ thuộc biến `PATH` của cửa sổ terminal.
+
 #### Claude Desktop
 Mở tệp cấu hình tại `%APPDATA%\Claude\claude_desktop_config.json` và thêm:
 ```json
 {
   "mcpServers": {
     "theotown": {
-      "command": "theotown-mcp",
+      "command": "C:\\Users\\<TÊN_USER>\\.theotown-mcp\\Scripts\\theotown-mcp.exe",
       "args": ["run", "--transport", "stdio"],
       "env": {
         "THEOTOWN_DATA_DIR": "C:\\Users\\<TÊN_USER>\\TheoTown"
@@ -287,7 +395,7 @@ Thêm vào `.cursor/mcp.json`:
 {
   "mcpServers": {
     "theotown": {
-      "command": "theotown-mcp",
+      "command": "C:\\Users\\<TÊN_USER>\\.theotown-mcp\\Scripts\\theotown-mcp.exe",
       "args": ["run", "--transport", "stdio"]
     }
   }
@@ -299,7 +407,7 @@ Thêm vào tệp cấu hình `hermes.yaml`:
 ```yaml
 mcp_servers:
   theotown:
-    command: theotown-mcp
+    command: C:\Users\<TÊN_USER>\.theotown-mcp\Scripts\theotown-mcp.exe
     args:
       - run
       - --transport
@@ -311,7 +419,7 @@ mcp_servers:
 ### 5. Danh Sách Công Cụ & Tài Nguyên
 
 - **Công cụ xây dựng & quản trị (12 Tools)**:
-  - `theotown_get_status`: Lấy thông tin tài chính, dân số, độ hạnh phúc, kích thước bản đồ và tốc độ game.
+  - `theotown_get_status`: Đọc tài chính, dân số, thuế, việc làm, hạnh phúc theo từng yếu tố, điện/nước, độ phủ dịch vụ và các tọa độ đang có vấn đề.
   - `theotown_build_road`: Xây đường ngang hoặc dọc giữa hai tọa độ với draft và cao độ chỉ định.
   - `theotown_build_zone`: Quy hoạch các khu dân cư, thương mại, công nghiệp.
   - `theotown_build_building`: Đặt công trình theo ID hoặc tên gọi đại diện (alias).
